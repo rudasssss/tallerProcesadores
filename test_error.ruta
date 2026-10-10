@@ -1,0 +1,13 @@
+// test_error.ruta — Cada línea ilustra un error distinto
+
+speed = 3                  // 1) falta ';'
+forwrd 10;                 // 2) comando mal escrito
+turn up;                   // 3) 'turn' solo admite right/left
+x = 5 +3;                  // 4) '+3' se lee como prefijo: falta operador
+y = 5+ 3;                  // 5) '5+' se lee como postfijo no definido
+z = (2 * speed;            // 6) paréntesis sin cerrar
+w = 4 @ 2;                 // 7) carácter no reconocido
+if speed > 2 forward 1;    // 8) falta 'then'
+return home;               // 9) solo existe 'return base'
+repeat 3 times {
+    forward 1;

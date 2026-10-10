@@ -1,0 +1,37 @@
+// test_valido.ruta — Entrega en el campus (programa válido)
+
+/* Declaración al estilo Swift: operador nuevo con precedencia propia */
+operator ** infix precedence 80 assoc right;
+
+speed = 3;
+limit = 2 ** 3;              // 8
+distance = 10 * speed + 5;   // 35  (precedencia: * antes que +)
+
+forward distance;
+turn right;
+
+// Espaciado: infijo apretado liga más fuerte que infijo con espacios
+a = 1+2 * 3;                 // (1+2) * 3 = 9
+b = 1 + 2*3;                 // 1 + (2*3) = 7
+c = -speed + 4;              // prefijo '-' pegado a su operando
+d = 4!;                      // postfijo (factorial) = 24
+
+// Decisiones anidadas: el 'else' pertenece al 'if' más cercano
+if speed > 2 then
+    if speed > 5 then
+        forward 100;
+    else
+        forward 1;           // se ejecuta: speed = 3
+else
+    stop;
+
+// Bucles y bloques
+repeat 3 times {
+    forward 2;
+    turn left;
+}
+
+repeat 2 times
+    if a == 9 then turn right; else stop;
+
+return base;

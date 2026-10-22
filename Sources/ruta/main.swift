@@ -3,8 +3,7 @@
 // Desde aquí arranca todo: lee el archivo, lo pasa por el lexer, después por el
 // parser y, si no hubo errores, lo ejecuta en el simulador.
 //
-// Uso:  swift run ruta <archivo.ruta> [--strict] [--no-run]
-//   --strict  los espacios ya no cambian la precedencia (a+b vale lo mismo que a + b)
+// Uso:  swift run ruta <archivo.ruta> [--no-run]
 //   --no-run  solo analiza y muestra tokens y árbol, sin mover al robot
 
 import Foundation
@@ -14,11 +13,14 @@ func fail(_ msg: String) -> Never {
     exit(2)
 }
 
+let usage = "Uso: ruta <archivo.ruta> [--no-run]"
 let args = Array(CommandLine.arguments.dropFirst())
-guard let path = args.first(where: { !$0.hasPrefix("--") }) else {
-    fail("Uso: ruta <archivo.ruta> [--strict] [--no-run]")
+if let unknown = args.first(where: { $0.hasPrefix("--") && $0 != "--no-run" }) {
+    fail("opción desconocida '\(unknown)'\n\(usage)")
 }
-let spacingPrecedence = !args.contains("--strict")
+guard let path = args.first(where: { !$0.hasPrefix("--") }) else {
+    fail(usage)
+}
 let runProgram = !args.contains("--no-run")
 
 guard let data = FileManager.default.contents(atPath: path),
@@ -76,7 +78,7 @@ var errorCount = lexer.errors.count
 lexer.errors.forEach(report)
 
 // Paso 2: análisis sintáctico (revisar que los tokens sigan la gramática)
-let parser = Parser(tokens: tokens, spacingPrecedence: spacingPrecedence)
+let parser = Parser(tokens: tokens)
 let program = parser.parseProgram()
 parser.errors.forEach(report)
 errorCount += parser.errors.count

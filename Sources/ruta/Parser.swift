@@ -9,27 +9,20 @@
 // documento del taller.
 //
 // Para las expresiones usamos un parser de Pratt que consulta una tabla de
-// operadores, parecido a como lo hace Swift:
+// operadores. De Swift tomamos dos ideas:
 //   1. La precedencia y la asociatividad no están fijas en la gramática. Viven en
 //      `OperatorTable` y el programa las puede cambiar con `operator ... ;`.
-//   2. Los espacios deciden si un operador es prefijo, infijo o postfijo.
-//   3. Si un infijo está pegado (`a+b`) le damos más prioridad que a uno con
-//      espacios (`a + b`). Así `1+2 * 3` queda como `(1+2) * 3`, que es lo que
-//      parece a simple vista.
+//   2. Los espacios deciden si un operador es prefijo, infijo o postfijo, pero
+//      nunca su precedencia: `1+2 * 3` y `1 + 2*3` valen lo mismo, `1 + (2*3)`.
 
 final class Parser {
     private let tokens: [Token]
     private var pos = 0
     private(set) var table = OperatorTable()
     private(set) var errors: [RutaError] = []
-    private let spacingPrecedence: Bool
 
-    /// Lo que se le suma a un infijo pegado. Es bien grande para que siempre gane.
-    private static let tightBonus = 1000
-
-    init(tokens: [Token], spacingPrecedence: Bool = true) {
+    init(tokens: [Token]) {
         self.tokens = tokens
-        self.spacingPrecedence = spacingPrecedence
     }
 
     // MARK: utilidades
@@ -292,11 +285,6 @@ final class Parser {
 
     // MARK: expresiones
 
-    /// La precedencia que de verdad usamos: la de la tabla, más el extra si está pegado.
-    private func effectivePrecedence(_ t: Token, _ info: OpInfo) -> Int {
-        info.precedence + ((spacingPrecedence && t.isTight) ? Parser.tightBonus : 0)
-    }
-
     func parseExpr(_ minPrec: Int = 0) throws -> Expr {
         var lhs = try parseUnary()
         while check(.op) {
@@ -309,12 +297,12 @@ final class Parser {
                                + "Recuerde que una secuencia de símbolos es UN solo operador: '=-' o '!+' no se separan solos; use espacios. "
                                + "También puede declararlo: operator \(t.lexeme) infix precedence 50;")
                 }
-                let eff = effectivePrecedence(t, info)
-                if eff < minPrec { return lhs }
+                let prec = info.precedence
+                if prec < minPrec { return lhs }
                 advance()
-                let rhs = try parseExpr(info.assoc == .right ? eff : eff + 1)
+                let rhs = try parseExpr(info.assoc == .right ? prec : prec + 1)
                 if info.assoc == .none, check(.op), current.fixity == .infix,
-                   let n = table.infix[current.lexeme], effectivePrecedence(current, n) == eff {
+                   let n = table.infix[current.lexeme], n.precedence == prec {
                     throw fail(current, "'\(t.lexeme)' y '\(current.lexeme)' no son asociativos entre sí (no se pueden encadenar)",
                                "Use paréntesis: (a \(t.lexeme) b) \(current.lexeme) c")
                 }

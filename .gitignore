@@ -1,0 +1,6 @@
+# Archivos de compilación de Swift
+.build/
+*.exe
+
+# Configuración del editor
+.vscode/

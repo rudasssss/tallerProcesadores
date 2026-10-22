@@ -10,8 +10,8 @@ distance = 10 * speed + 5;   // 35  (precedencia: * antes que +)
 forward distance;
 turn right;
 
-// Espaciado: infijo apretado liga más fuerte que infijo con espacios
-a = 1+2 * 3;                 // (1+2) * 3 = 9
+// Espaciado: decide la fijación, no la precedencia ('*' antes que '+')
+a = 1+2 * 3;                 // 1 + (2*3) = 7
 b = 1 + 2*3;                 // 1 + (2*3) = 7
 c = -speed + 4;              // prefijo '-' pegado a su operando
 d = 4!;                      // postfijo (factorial) = 24
@@ -32,6 +32,6 @@ repeat 3 times {
 }
 
 repeat 2 times
-    if a == 9 then turn right; else stop;
+    if a == 7 then turn right; else stop;
 
 return base;

@@ -56,9 +56,6 @@ struct Token {
         if spaceBefore == spaceAfter { return .infix }
         return spaceBefore ? .prefix : .postfix
     }
-
-    /// Un infijo escrito todo pegado, como `a+b`. Estos los hacemos ligar más fuerte.
-    var isTight: Bool { !spaceBefore && !spaceAfter }
 }
 
 struct Lexer {

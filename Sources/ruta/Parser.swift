@@ -1,16 +1,21 @@
-// Parser.swift — Parser manual (descenso recursivo + Pratt) de Ruta.
+// Parser.swift
 //
-// Sentencias: descenso recursivo. El `else` se enlaza al `if` más cercano
-// porque el `if` interno consume el `else` antes de volver al externo
-// (implementa la gramática "cerrada/abierta" de gramatica.md).
+// El analizador sintáctico de Ruta, también hecho a mano.
 //
-// Expresiones: parser de precedencias (Pratt) guiado por una TABLA DE
-// OPERADORES en tiempo de ejecución, al estilo Swift:
-//   1. La precedencia/asociatividad no están en la gramática sino en
-//      `OperatorTable`, modificable con `operator ... ;` mientras se parsea.
-//   2. El ESPACIADO decide prefijo / infijo / postfijo (`Token.fixity`).
-//   3. Un infijo "apretado" (`a+b`) recibe un bonus de precedencia sobre uno
-//      con espacios (`a + b`), de modo que `1+2 * 3` agrupa como `(1+2) * 3`.
+// Las sentencias se leen con descenso recursivo: una función por cada tipo de
+// sentencia. Con el problema del `else` no hubo que hacer nada especial: el `if`
+// de adentro se lee primero y se queda con el `else`, así que el de afuera ya no
+// lo ve. Eso da el mismo resultado que la gramática "cerrada/abierta" del
+// documento del taller.
+//
+// Para las expresiones usamos un parser de Pratt que consulta una tabla de
+// operadores, parecido a como lo hace Swift:
+//   1. La precedencia y la asociatividad no están fijas en la gramática. Viven en
+//      `OperatorTable` y el programa las puede cambiar con `operator ... ;`.
+//   2. Los espacios deciden si un operador es prefijo, infijo o postfijo.
+//   3. Si un infijo está pegado (`a+b`) le damos más prioridad que a uno con
+//      espacios (`a + b`). Así `1+2 * 3` queda como `(1+2) * 3`, que es lo que
+//      parece a simple vista.
 
 final class Parser {
     private let tokens: [Token]
@@ -19,7 +24,7 @@ final class Parser {
     private(set) var errors: [RutaError] = []
     private let spacingPrecedence: Bool
 
-    /// Bonus que gana un infijo apretado; mayor que cualquier precedencia razonable.
+    /// Lo que se le suma a un infijo pegado. Es bien grande para que siempre gane.
     private static let tightBonus = 1000
 
     init(tokens: [Token], spacingPrecedence: Bool = true) {
@@ -48,15 +53,16 @@ final class Parser {
                   silent: t.kind == .invalid)
     }
 
-    /// Registra un error del parser salvo que sea eco de un error léxico ya reportado.
+    /// Guarda el error, a menos que sea el mismo problema que ya reportó el lexer.
     private func record(_ e: RutaError) {
         if !e.silent { errors.append(e) }
     }
 
-    /// Error situado justo después del último token consumido (p. ej. `;` faltante).
+    /// Para errores tipo "falta el `;`": marcamos justo después del último token
+    /// leído, que es donde de verdad falta algo.
     private func failAfterPrevious(_ msg: String, _ hint: String? = nil) -> RutaError {
         let p = previous
-        // Si lo que realmente aparece es un lexema inválido, el problema ya se informó.
+        // Si lo que sigue es algo que el lexer ya marcó como malo, no lo repetimos.
         return RutaError(phase: .sintactico, line: p.line, column: p.endColumn, message: msg, hint: hint,
                          silent: current.kind == .invalid)
     }
@@ -67,7 +73,7 @@ final class Parser {
 
     private func expect(_ k: TokenKind, _ msg: String, _ hint: String? = nil) throws {
         if check(k) { advance(); return }
-        // Los delimitadores que "faltan" se reportan al final de la línea anterior.
+        // Si falta un `;` o un `)`, el error se ve mejor al final de lo que ya se escribió.
         if k == .semicolon || k == .rparen {
             throw failAfterPrevious(msg, hint)
         }
@@ -85,7 +91,7 @@ final class Parser {
             } catch let e as RutaError {
                 record(e)
                 synchronize()
-                if pos == start { advance() }   // garantiza progreso
+                if pos == start { advance() }   // para no quedarnos pegados en el mismo token
             } catch {
                 fatalError("error inesperado: \(error)")
             }
@@ -93,12 +99,14 @@ final class Parser {
         return stmts
     }
 
-    /// Modo pánico: tras un error se descartan tokens hasta un punto de sincronización:
-    ///   - un `;` (se consume y termina la sentencia dañada),
-    ///   - un `}` o `{`, o una palabra clave que inicia sentencia,
-    ///   - un identificador al comienzo de una línea nueva.
-    /// Un `else` huérfano (su `if` ya fue descartado) se descarta sin avisar: informarlo
-    /// sería un falso error en cascada.
+    /// Recuperación en "modo pánico". Cuando aparece un error vamos botando tokens
+    /// hasta encontrar un buen lugar para seguir:
+    ///   - un `;`, que cierra la sentencia que estaba mal,
+    ///   - una `{` o `}`, o una palabra que empieza sentencia (forward, if, ...),
+    ///   - una variable al inicio de una línea nueva.
+    /// Así se pueden mostrar varios errores de una vez y no solo el primero.
+    /// Si queda un `else` suelto porque su `if` estaba mal, lo saltamos callados:
+    /// avisar de eso sería un error falso.
     private func synchronize() {
         while !check(.eof) {
             if check(.semicolon) { advance(); return }
@@ -125,8 +133,9 @@ final class Parser {
                        "Sintaxis: if <condición> then <sentencia> [else <sentencia>]")
             let thenS = try parseStatement()
             var elseS: Stmt? = nil
-            // Dangling else: este `if` toma el `else` que venga ahora; si había un
-            // `if` anidado en `thenS`, ese ya lo consumió antes (el más cercano gana).
+            // El famoso "dangling else": si hay un `else` aquí, es de este `if`.
+            // Si adentro había otro `if`, ese ya se llevó su `else` antes, así que
+            // siempre gana el `if` más cercano.
             if match(.kwElse) { elseS = try parseStatement() }
             return .ifElse(cond: cond, then: thenS, else: elseS, t.loc)
 
@@ -155,7 +164,7 @@ final class Parser {
                     if pos == start { advance() }
                 }
             }
-            advance()  // '}'
+            advance()  // la '}' que cierra el bloque
             return .block(list, t.loc)
 
         default:
@@ -225,7 +234,8 @@ final class Parser {
         }
     }
 
-    /// operator <símbolo> infix|prefix|postfix [precedence N] [assoc left|right|none] ;
+    /// Lee una declaración de operador. La forma es:
+    ///   operator <símbolo> infix|prefix|postfix [precedence N] [assoc left|right|none] ;
     private func parseOperatorDecl() throws -> Stmt {
         let kw = current
         advance()
@@ -268,7 +278,8 @@ final class Parser {
             }
         }
 
-        // Efecto inmediato: a partir de aquí el parser usa la nueva tabla.
+        // El cambio se aplica de una vez: desde esta línea en adelante el parser ya
+        // usa el operador nuevo.
         switch fixity {
         case .infix:
             table.infix[sym] = OpInfo(precedence: prec ?? table.infix[sym]?.precedence ?? 50,
@@ -281,7 +292,7 @@ final class Parser {
 
     // MARK: expresiones
 
-    /// Precedencia efectiva de un infijo concreto (tabla + bonus por espaciado).
+    /// La precedencia que de verdad usamos: la de la tabla, más el extra si está pegado.
     private func effectivePrecedence(_ t: Token, _ info: OpInfo) -> Int {
         info.precedence + ((spacingPrecedence && t.isTight) ? Parser.tightBonus : 0)
     }
@@ -321,8 +332,9 @@ final class Parser {
         return lhs
     }
 
-    /// unario := opPrefijo unario | primario opPostfijo*
-    /// (los prefijos/postfijos ligan más fuerte que cualquier infijo, como en Swift)
+    /// Lee un operando con sus prefijos y postfijos, por ejemplo `-x` o `4!`.
+    ///   unario := opPrefijo unario | primario opPostfijo*
+    /// Como en Swift, estos operadores ligan más fuerte que cualquier infijo.
     private func parseUnary() throws -> Expr {
         let t = current
         if t.kind == .op {
@@ -380,6 +392,9 @@ final class Parser {
 }
 
 // MARK: - Sugerencias para comandos mal escritos
+//
+// Si alguien escribe `forwrd`, buscamos la palabra reservada más parecida
+// (distancia de edición de 2 letras o menos) para decirle "¿quiso decir forward?".
 
 private func closestKeyword(to word: String) -> String? {
     let candidates = ["forward", "turn", "stop", "return", "if", "repeat", "operator"]

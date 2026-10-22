@@ -1,8 +1,11 @@
-// Lexer.swift — Analizador léxico manual de Ruta.
+// Lexer.swift
 //
-// Idea tomada de Swift: cada token de operador recuerda si tenía espacio
-// (o puntuación de apertura/cierre) a su izquierda y a su derecha. Con eso
-// se clasifica en prefijo / infijo / postfijo (ver `Token.fixity`).
+// Aquí está el analizador léxico de Ruta, hecho a mano. Recorre el texto
+// caracter por caracter y lo va partiendo en tokens.
+//
+// La idea la sacamos de Swift: cada operador se acuerda de si tenía un espacio
+// a la izquierda y a la derecha. Con eso después sabemos si es prefijo, infijo
+// o postfijo (mirar `Token.fixity`).
 
 enum TokenKind: String {
     // Palabras reservadas
@@ -17,7 +20,7 @@ enum TokenKind: String {
     // Puntuación
     case assign = "ASSIGN", lparen = "LPAREN", rparen = "RPAREN"
     case lbrace = "LBRACE", rbrace = "RBRACE", semicolon = "SEMI"
-    /// Lexema inválido ya reportado por el lexer; el parser lo trata como punto de resincronización.
+    /// Algo que el lexer no supo leer. El error ya se mostró, así que el parser solo lo salta.
     case invalid = "INVALID"
     case eof = "EOF"
 }
@@ -36,24 +39,25 @@ struct Token {
     let lexeme: String
     let line: Int
     let column: Int
-    /// true si NO hay "ligadura" a la izquierda (inicio, espacio, comentario o `( [ { , ;`).
+    /// Es true si a la izquierda no hay nada pegado: un espacio, un comentario,
+    /// el inicio del archivo o algo como `(` o `{`.
     let spaceBefore: Bool
-    /// true si NO hay "ligadura" a la derecha (fin, espacio, comentario o `) ] } , ;`).
+    /// Lo mismo pero mirando a la derecha: espacio, comentario, fin del archivo, `)`, `}` o `;`.
     let spaceAfter: Bool
 
     var endColumn: Int { column + lexeme.unicodeScalars.count }
     var loc: Loc { Loc(line: line, column: column) }
 
-    /// Regla de Swift:
-    ///   `a + b` y `a+b`  -> infijo   (ambos lados iguales)
-    ///   `a +b`           -> prefijo  (espacio solo a la izquierda)
-    ///   `a+ b`           -> postfijo (espacio solo a la derecha)
+    /// Es la misma regla que usa Swift:
+    ///   `a + b` o `a+b`: infijo, porque los dos lados están iguales
+    ///   `a +b`: prefijo, porque el espacio está solo a la izquierda
+    ///   `a+ b`: postfijo, porque el espacio está solo a la derecha
     var fixity: Fixity {
         if spaceBefore == spaceAfter { return .infix }
         return spaceBefore ? .prefix : .postfix
     }
 
-    /// Operador infijo sin espacios a ningún lado (`a+b`): se une más fuerte.
+    /// Un infijo escrito todo pegado, como `a+b`. Estos los hacemos ligar más fuerte.
     var isTight: Bool { !spaceBefore && !spaceAfter }
 }
 
@@ -71,7 +75,8 @@ struct Lexer {
 
     init(source: String) {
         var scalars = Array(source.unicodeScalars)
-        // Los editores de Windows (Notepad, PowerShell) pueden anteponer un BOM UTF-8 (U+FEFF).
+        // En Windows a veces el Bloc de notas o PowerShell meten un caracter invisible (BOM)
+        // al principio del archivo. Si está, lo quitamos para que no dé error.
         if scalars.first == Unicode.Scalar(0xFEFF) { scalars.removeFirst() }
         self.src = scalars
     }
@@ -172,14 +177,14 @@ struct Lexer {
         }
     }
 
-    /// ¿Lo que hay a la izquierda del token actual cuenta como "espacio"?
+    /// Revisa si lo que está justo antes del token cuenta como espacio.
     private func leftIsOpen() -> Bool {
         if afterComment || pos == 0 { return true }
         let p = src[pos - 1]
         return Lexer.isWhitespace(p) || Lexer.openPunct.contains(p)
     }
 
-    /// ¿Lo que hay a la derecha de la posición actual cuenta como "espacio"?
+    /// Igual que la anterior, pero mirando lo que viene después.
     private func rightIsOpen() -> Bool {
         guard let n = peek() else { return true }
         if Lexer.isWhitespace(n) || Lexer.closePunct.contains(n) { return true }
@@ -197,7 +202,8 @@ struct Lexer {
             while let d = peek(), Lexer.isDigit(d) { text.unicodeScalars.append(d); advance() }
         }
         if let n = peek(), Lexer.isLetter(n) {
-            // 12abc: consumir el resto para no producir errores en cascada
+            // Caso tipo 12abc: nos comemos todo el pedazo de una vez para no sacar
+            // un montón de errores seguidos por lo mismo.
             var bad = text
             while let d = peek(), Lexer.isLetter(d) || Lexer.isDigit(d) { bad.unicodeScalars.append(d); advance() }
             error(l, c, "número mal formado '\(bad)'",
@@ -214,11 +220,12 @@ struct Lexer {
         return Token(kind: kind, lexeme: text, line: l, column: c, spaceBefore: before, spaceAfter: rightIsOpen())
     }
 
-    /// Como en Swift: una secuencia maximal de caracteres de operador es UN token.
+    /// Igual que en Swift, si hay varios símbolos de operador seguidos se toman todos
+    /// como un solo token. Por ejemplo `<=` o `**`.
     private mutating func lexOperator(_ l: Int, _ c: Int, _ before: Bool) -> Token {
         var text = ""
         while let d = peek(), Lexer.opChars.contains(d) {
-            if d == "/" && (peek(1) == "/" || peek(1) == "*") { break }   // empieza un comentario
+            if d == "/" && (peek(1) == "/" || peek(1) == "*") { break }   // ojo, aquí empieza un comentario
             text.unicodeScalars.append(d)
             advance()
         }

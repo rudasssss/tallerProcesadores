@@ -1,11 +1,16 @@
-// AST.swift — Árbol de sintaxis abstracta, errores y tabla de operadores de Ruta.
+// AST.swift
+//
+// Aquí van las estructuras que comparten todas las partes del procesador:
+// el árbol de sintaxis (lo que arma el parser), los errores y la tabla de
+// operadores.
 
 struct Loc {
     let line: Int
     let column: Int
 }
 
-/// Error léxico / sintáctico / de ejecución con posición y ayuda.
+/// Un error de cualquier etapa (léxica, sintáctica o de ejecución). Guarda la línea,
+/// la columna y una ayuda para que quien escribió el programa sepa cómo arreglarlo.
 struct RutaError: Error {
     enum Phase: String {
         case lexico = "léxico"
@@ -18,8 +23,8 @@ struct RutaError: Error {
     let column: Int
     let message: String
     let hint: String?
-    /// true si el problema ya fue reportado por una fase anterior (p. ej. el lexer):
-    /// el parser solo se resincroniza y NO lo vuelve a informar (evita cascadas).
+    /// Se pone en true cuando el lexer ya avisó del mismo problema. Así el parser
+    /// no lo muestra otra vez y no se llena la pantalla de errores repetidos.
     var silent: Bool = false
 }
 
@@ -35,8 +40,8 @@ enum Direction: String {
     case left, right
 }
 
-/// Información de un operador infijo. La precedencia NO está en la gramática:
-/// vive en esta tabla, que el programa puede modificar con `operator ...;`.
+/// Precedencia y asociatividad de un operador infijo. Esto no está escrito en la
+/// gramática: está en esta tabla, y el programa la puede cambiar con `operator ...;`.
 struct OpInfo {
     var precedence: Int
     var assoc: Assoc
@@ -75,7 +80,8 @@ indirect enum Expr {
         }
     }
 
-    /// Forma S-expression, útil para ver cómo quedó agrupada la expresión.
+    /// Escribe la expresión con todos sus paréntesis, por ejemplo `(+ (* 10 speed) 5)`.
+    /// Sirve para ver de un vistazo cómo la agrupó el parser.
     var sexp: String {
         switch self {
         case .number(let v, _): return formatNumber(v)
@@ -105,6 +111,8 @@ func formatNumber(_ v: Double) -> String {
 }
 
 // MARK: - Impresión del AST
+//
+// Imprime el árbol con sangría, para mostrarlo en consola después de analizar.
 
 func renderAST(_ stmts: [Stmt]) -> String {
     var out = "Programa\n"

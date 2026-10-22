@@ -1,8 +1,11 @@
-// main.swift — Punto de entrada del procesador de Ruta.
+// main.swift
+//
+// Desde aquí arranca todo: lee el archivo, lo pasa por el lexer, después por el
+// parser y, si no hubo errores, lo ejecuta en el simulador.
 //
 // Uso:  swift run ruta <archivo.ruta> [--strict] [--no-run]
-//   --strict  desactiva la precedencia por espaciado (a+b == a + b)
-//   --no-run  solo analiza (tokens + AST), no simula el robot
+//   --strict  los espacios ya no cambian la precedencia (a+b vale lo mismo que a + b)
+//   --no-run  solo analiza y muestra tokens y árbol, sin mover al robot
 
 import Foundation
 
@@ -23,8 +26,9 @@ guard let data = FileManager.default.contents(atPath: path),
     fail("No se pudo leer el archivo '\(path)'")
 }
 
-// Líneas del fuente para mostrar el contexto del error. Se separa a mano por scalars:
-// en Swift "\r\n" es un solo Character, así no dependemos de Foundation para CRLF.
+// Guardamos las líneas del archivo para poder mostrar la línea donde está el error.
+// Las separamos a mano porque en Swift "\r\n" (fin de línea de Windows) cuenta como
+// un solo caracter y con split normal no se cortaban bien.
 let sourceLines: [String] = {
     var lines: [String] = []
     var cur = String.UnicodeScalarView()
@@ -36,6 +40,8 @@ let sourceLines: [String] = {
     return lines
 }()
 
+// Muestra un error así: el mensaje, la línea del programa, una ^ debajo de donde
+// falló y, si hay, una ayuda.
 func report(_ e: RutaError) {
     print("error[\(e.phase.rawValue)] línea \(e.line), columna \(e.column): \(e.message)")
     if e.line >= 1 && e.line <= sourceLines.count {
@@ -53,7 +59,7 @@ func pad(_ s: String, _ n: Int) -> String {
     s.count >= n ? s : s + String(repeating: " ", count: n - s.count)
 }
 
-// 1. Análisis léxico
+// Paso 1: análisis léxico (de texto a tokens)
 var lexer = Lexer(source: source)
 let tokens = lexer.tokenize()
 
@@ -69,7 +75,7 @@ print("")
 var errorCount = lexer.errors.count
 lexer.errors.forEach(report)
 
-// 2. Análisis sintáctico
+// Paso 2: análisis sintáctico (revisar que los tokens sigan la gramática)
 let parser = Parser(tokens: tokens, spacingPrecedence: spacingPrecedence)
 let program = parser.parseProgram()
 parser.errors.forEach(report)
@@ -83,7 +89,7 @@ if errorCount > 0 {
 print("=== AST ===")
 print(renderAST(program))
 
-// 3. Ejecución (simulador del robot)
+// Paso 3: si todo salió bien, ponemos a andar al robot en el simulador
 if runProgram {
     print("=== EJECUCIÓN ===")
     do {

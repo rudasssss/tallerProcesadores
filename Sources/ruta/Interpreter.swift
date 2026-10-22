@@ -1,11 +1,14 @@
-// Interpreter.swift — Simulador del robot: ejecuta el AST e imprime cada acción.
+// Interpreter.swift
+//
+// Un simulador sencillo del robot. Recorre el árbol que armó el parser, va moviendo
+// al robot en un plano y muestra en consola cada cosa que hace.
 
 import Foundation
 
 final class Interpreter {
     private var vars: [String: Double] = [:]
     private var x = 0.0, y = 0.0
-    private var heading = 0   // grados; 0 = norte, 90 = este
+    private var heading = 0   // hacia dónde mira, en grados (0 es norte, 90 es este)
     private var stopped = false
     private var steps = 0
     private let maxSteps = 1_000_000
@@ -22,6 +25,7 @@ final class Interpreter {
         out("Fin: posición (\(formatNumber(x)), \(formatNumber(y))), rumbo \(heading)°")
     }
 
+    // Cuenta los pasos. Si un repeat se pasa de largo, paramos en vez de quedarnos colgados.
     private func tick(_ l: Loc) throws {
         steps += 1
         if steps > maxSteps { throw runtimeError(l, "se superó el límite de \(maxSteps) pasos", "¿Hay un 'repeat' con un contador enorme?") }
@@ -71,7 +75,7 @@ final class Interpreter {
         case .block(let list, _):
             for st in list { try exec(st); if stopped { break } }
         case .operatorDecl:
-            break   // ya fue procesada por el parser
+            break   // el parser ya se encargó de esto, aquí no hay nada que hacer
         }
     }
 
@@ -79,7 +83,8 @@ final class Interpreter {
         formatNumber((v * 1000).rounded() / 1000)
     }
 
-    /// Operador declarado con `operator ...;` (o parseable) sin implementación en el simulador.
+    /// Para cuando alguien declara un operador nuevo con `operator ...;` y lo usa, pero el
+    /// simulador no sabe qué cálculo hace. El parser lo acepta; el problema es al ejecutar.
     private func noSemantics(_ l: Loc, _ op: String, _ fixity: Fixity, _ available: String) -> RutaError {
         RutaError(phase: .semantico, line: l.line, column: l.column,
                   message: "El operador \(fixity.rawValue) '\(op)' fue declarado pero no tiene una semántica implementada en el simulador",
@@ -92,6 +97,8 @@ final class Interpreter {
     }
 
     // MARK: expresiones
+    //
+    // Todo se calcula como Double. Las comparaciones devuelven 1 (verdadero) o 0 (falso).
 
     private func eval(_ e: Expr) throws -> Double {
         switch e {
